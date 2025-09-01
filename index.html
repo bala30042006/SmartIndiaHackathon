@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>TripMate – Travel Organizer (SIH Demo)</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+
+  <style>
+    :root{
+      --bg-1: linear-gradient(180deg,#00ff88 0,#eef2ff 100%);
+      --card-bg: #081025;      /* deep navy card background */
+      --card-2: #0b1430;       /* slightly lighter */
+      --accent: #06b6d4;       /* teal */
+      --accent-2: #06d6a0;
+      --muted: #9fb4c8;
+      --danger: #ef4444;
+      --glass: rgba(255,255,255,0.04);
+    }
+
+    html,body{height:100%;background:var(--bg-1);font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#e6eef6}
+    .navbar, .modal-content, .offcanvas{background:linear-gradient(180deg, var(--card-bg), var(--card-2)); border:none}
+    .navbar-brand{font-weight:700}
+    .card.app-card{background: linear-gradient(180deg, rgba(0, 0, 0, 0.95), #000000f2); border:1px solid rgba(0, 105, 11, 0.04); box-shadow:0 12px 30px rgba(2,6,23,0.6)}
+    .card .card-body { color:#e7f0fb }
+    .btn-primary{background:linear-gradient(90deg,var(--accent),var(--accent-2)); border:none}
+    .btn-outline-light{border-color:rgba(255,255,255,0.08)}
+    .small-muted{color:var(--muted)}
+    .map-canvas { border-radius:12px; overflow:hidden; background:linear-gradient(180deg,#0b2b44,#04202f); height:320px; display:flex; align-items:center; justify-content:center; position:relative }
+    .map-overlay { position:absolute; left:14px; bottom:14px; padding:8px 10px; background:rgba(0,0,0,0.45); border-radius:10px; font-size:13px; color:#fff; border:1px solid rgba(255,255,255,0.04) }
+    .badge-soft { background:rgba(255,255,255,0.04); color:#cfeff3; border:1px solid rgba(255,255,255,0.03); padding:.35rem .6rem; border-radius:999px; font-weight:600 }
+    .truncate-1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .truncate-2{-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+    .pointer{cursor:pointer}
+    .stat-pill{background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.03);font-weight:700}
+    .empty-state{opacity:.9;color:var(--muted)}
+
+    /* table tweaks */
+    table.table-dark thead th { background:transparent; color:#cfeff3; border-bottom:1px solid rgba(255,255,255,0.04) }
+
+    /* responsive tweaks */
+    @media (max-width:900px){
+      .map-canvas{height:260px}
+    }
+  </style>
+</head>
+<body>
+  <!-- NAVBAR -->
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top px-3" >
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center gap-2" href="#" onclick="navigateHome()">
+        <i class="bi bi-compass-fill fs-4 text-primary"></i>
+        <span>TripMate</span>
+        <small class="badge-soft ms-2">Govt. Kerala Demo</small>
+      </a>
+
+      <div class="d-flex gap-2 ms-auto">
+        <button class="btn btn-outline-light btn-sm" onclick="seedDemoData()"><i class="bi bi-magic me-1"></i>Demo Data</button>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newTripModal"><i class="bi bi-plus-lg me-1"></i>New Trip</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="container my-4">
+    <div id="homeView">
+      <div class="row g-4">
+
+        <!-- LEFT: Map + Overview -->
+        <div class="col-12 col-lg-7">
+          <div class="card app-card h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-start justify-content-between">
+                <div>
+                  <h4 class="mb-1">Explore Kerala</h4>
+                  <div class="small-muted">In-app map preview · Trip capture · Offline first demo</div>
+                </div>
+                <div class="text-end">
+                  <div class="stat-pill">Total Trips: <span id="tripCount" class="ms-2">0</span></div>
+                </div>
+              </div>
+
+              <div class="map-canvas mt-3 position-relative" id="mapWrap">
+                <canvas id="mapCanvas" style="width:100%;height:100%"></canvas>
+                <div class="map-overlay">Trivandrum → Munnar · Preview</div>
+              </div>
+
+              <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-outline-light" onclick="exportJSON()"><i class="bi bi-download me-1"></i>Export JSON</button>
+                <button class="btn btn-outline-light" onclick="printSummary()"><i class="bi bi-printer me-1"></i>Print</button>
+                <button class="btn btn-primary ms-auto" data-bs-toggle="modal" data-bs-target="#newTripModal"><i class="bi bi-plus-lg me-1"></i>Create Trip</button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Trip list & quick stats -->
+        <div class="col-12 col-lg-5">
+          <div class="card app-card h-100">
+            <div class="card-body d-flex flex-column">
+              <div class="d-flex align-items-center justify-content-between">
+                <h5 class="mb-0">Your Trips</h5>
+                <div class="small-muted">Manage itineraries, expenses & docs</div>
+              </div>
+
+              <div class="mt-3 flex-grow-1 overflow-auto" style="min-height:160px">
+                <div id="tripList" class="row g-3"></div>
+                <div id="emptyState" class="text-center empty-state p-4">
+                  <i class="bi bi-geo-alt fs-1 text-primary"></i>
+                  <div class="mt-2">No trips yet</div>
+                  <div class="small-muted">Create your first trip to plan itinerary, track expenses and save documents.</div>
+                </div>
+              </div>
+
+              <div class="mt-3 d-flex gap-2">
+                <button class="btn btn-outline-light" onclick="navigateHome()"><i class="bi bi-house-door me-1"></i>Home</button>
+                <button class="btn btn-outline-light" onclick="seedDemoData()"><i class="bi bi-lightning me-1"></i>Seed Demo</button>
+                <div class="ms-auto text-muted" style="font-size:13px">Local demo — data in localStorage</div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Destinations (small grid) -->
+      <div class="row mt-4 g-3">
+        <div class="col-12">
+          <div class="card app-card">
+            <div class="card-body">
+              <div class="d-flex align-items-center justify-content-between">
+                <h5 class="mb-0">Top Kerala Destinations</h5>
+                <div class="small-muted">Sample list from embedded JSON</div>
+              </div>
+
+              <div class="row g-3 mt-3" id="destGrid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRIP DETAIL VIEW -->
+    <section id="tripView" class="d-none mt-4">
+      <div class="mb-3">
+        <button class="btn btn-outline-light btn-sm" onclick="navigateHome()"><i class="bi bi-arrow-left"></i> Back</button>
+      </div>
+
+      <div id="tripHeader" class="card app-card mb-3">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <h4 id="tripTitle" class="mb-1">Trip</h4>
+            <div id="tripMeta" class="small-muted">Destination • Dates</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-light" onclick="shareTrip()"><i class="bi bi-share"></i> Share</button>
+            <button class="btn btn-danger" onclick="deleteTrip()"><i class="bi bi-trash3"></i> Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- tabs -->
+      <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="pills-itinerary-tab" data-bs-toggle="pill" data-bs-target="#pills-itinerary" type="button">Itinerary</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="pills-expense-tab" data-bs-toggle="pill" data-bs-target="#pills-expense" type="button">Expenses</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="pills-docs-tab" data-bs-toggle="pill" data-bs-target="#pills-docs" type="button">Documents</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="pills-notes-tab" data-bs-toggle="pill" data-bs-target="#pills-notes" type="button">Notes / Photos</button>
+        </li>
+      </ul>
+
+      <div class="tab-content" id="pills-tabContent">
+        <!-- ITINERARY -->
+        <div class="tab-pane fade show active" id="pills-itinerary">
+          <div class="card app-card mb-3">
+            <div class="card-body">
+              <form id="itineraryForm" class="row g-2 align-items-end">
+                <div class="col-12 col-md-3"><label class="form-label">Date</label><input type="date" class="form-control" id="itDate"/></div>
+                <div class="col-12 col-md-2"><label class="form-label">Time</label><input type="time" class="form-control" id="itTime"/></div>
+                <div class="col-12 col-md-3"><label class="form-label">Title</label><input type="text" class="form-control" id="itTitle" placeholder="Beach, Museum..."/></div>
+                <div class="col-12 col-md-3"><label class="form-label">Location</label><input type="text" class="form-control" id="itLocation" placeholder="Place"/></div>
+                <div class="col-12 col-md-1"><button class="btn btn-primary w-100" type="submit"><i class="bi bi-plus-lg"></i></button></div>
+              </form>
+            </div>
+          </div>
+          <div id="itineraryList" class="row g-3"></div>
+        </div>
+
+        <!-- EXPENSES -->
+        <div class="tab-pane fade" id="pills-expense">
+          <div class="card app-card mb-3">
+            <div class="card-body">
+              <form id="expenseForm" class="row g-2 align-items-end">
+                <div class="col-12 col-md-3"><label class="form-label">Date</label><input type="date" class="form-control" id="exDate"/></div>
+                <div class="col-12 col-md-3"><label class="form-label">Category</label>
+                  <select class="form-select" id="exCategory"><option>Food</option><option>Transport</option><option>Stay</option><option>Shopping</option><option>Activities</option><option>Other</option></select>
+                </div>
+                <div class="col-12 col-md-4"><label class="form-label">Description</label><input type="text" class="form-control" id="exDesc" placeholder="Lunch at beach"/></div>
+                <div class="col-12 col-md-2"><label class="form-label">Amount (₹)</label><input type="number" class="form-control" id="exAmount" min="0" step="0.01"/></div>
+                <div class="col-12 mt-2"><button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg me-1"></i>Add Expense</button></div>
+              </form>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-12 col-lg-8">
+              <div class="card app-card">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Expenses</h6>
+                    <span class="badge bg-secondary" id="expenseCount">0 items</span>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-dark table-sm align-middle mb-0">
+                      <thead>
+                        <tr><th>Date</th><th>Category</th><th>Description</th><th class="text-end">Amount (₹)</th><th></th></tr>
+                      </thead>
+                      <tbody id="expenseTable"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-lg-4">
+              <div class="card app-card h-100">
+                <div class="card-body">
+                  <h6>Summary</h6>
+                  <div id="expenseSummary" class="small-muted mb-3"></div>
+                  <hr/>
+                  <div class="d-flex justify-content-between">
+                    <div class="fw-semibold">Total</div><div class="fw-bold" id="expenseTotal">₹0</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DOCUMENTS -->
+        <div class="tab-pane fade" id="pills-docs">
+          <div class="card app-card mb-3">
+            <div class="card-body">
+              <form id="docForm" class="row g-2 align-items-end">
+                <div class="col-12 col-md-3"><label class="form-label">Name</label><input type="text" class="form-control" id="docName" placeholder="Ticket"/></div>
+                <div class="col-12 col-md-3"><label class="form-label">Type</label><select class="form-select" id="docType"><option>Ticket</option><option>Hotel</option><option>ID</option><option>Pass</option><option>Other</option></select></div>
+                <div class="col-12 col-md-5"><label class="form-label">Link (optional)</label><input type="url" class="form-control" id="docUrl" placeholder="https://drive..."/></div>
+                <div class="col-12 col-md-1"><button class="btn btn-primary w-100" type="submit"><i class="bi bi-plus-lg"></i></button></div>
+                <div class="col-12"><div class="form-text small-muted">Links are stored (no upload). Local demo only.</div></div>
+              </form>
+            </div>
+          </div>
+          <div id="docList" class="row g-3"></div>
+        </div>
+
+        <!-- NOTES -->
+        <div class="tab-pane fade" id="pills-notes">
+          <div class="card app-card mb-3">
+            <div class="card-body">
+              <form id="noteForm" class="row g-2 align-items-end">
+                <div class="col-12 col-md-8"><label class="form-label">Note</label><input type="text" class="form-control" id="noteText" placeholder="Quick memory"/></div>
+                <div class="col-12 col-md-3"><label class="form-label">Image URL (optional)</label><input type="url" class="form-control" id="noteImg" placeholder="https://..."/></div>
+                <div class="col-12 col-md-1"><button class="btn btn-primary w-100" type="submit"><i class="bi bi-plus-lg"></i></button></div>
+              </form>
+            </div>
+          </div>
+
+          <div id="noteList" class="row g-3"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- New Trip Modal -->
+  <div class="modal fade" id="newTripModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content text-light">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-lg me-2"></i>Create New Trip</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="tripForm" class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Trip Name</label>
+              <input type="text" class="form-control" id="tripName" placeholder="Goa Getaway" required/>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Destination</label>
+              <input type="text" class="form-control" id="tripDestination" placeholder="Munnar, Kerala" required/>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Start Date</label>
+              <input type="date" class="form-control" id="tripStart" required/>
+            </div>
+            <div class="col-6">
+              <label class="form-label">End Date</label>
+              <input type="date" class="form-control" id="tripEnd" required/>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" onclick="createTrip()">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index:1080">
+    <div id="liveToast" class="toast text-bg-dark border-0" role="alert" aria-live="polite" aria-atomic="true">
+      <div class="toast-body"></div>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    /* -------------------------
+       Data + Helpers
+       ------------------------- */
+    const KEY = 'tripmate_trips_v1';
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+    const read = () => JSON.parse(localStorage.getItem(KEY) || '[]');
+    const write = (d) => localStorage.setItem(KEY, JSON.stringify(d));
+    const uid = () => Math.random().toString(36).slice(2,10);
+    const fmt = d => d ? new Date(d).toLocaleDateString() : '';
+    const money = n => '₹' + (Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:2});
+    const toast = (msg) => {
+      const t = $('#liveToast');
+      t.querySelector('.toast-body').textContent = msg;
+      bootstrap.Toast.getOrCreateInstance(t, {delay:1400}).show();
+    };
+
+    /* -------------------------
+       App state
+       ------------------------- */
+    let trips = read();
+    let currentId = null;
+
+    /* -------------------------
+       Map preview drawing (simple canvas)
+       ------------------------- */
+    const mapCanvas = document.getElementById('mapCanvas');
+    function drawMapPreview(){
+      const wrap = document.getElementById('mapWrap');
+      const rect = wrap.getBoundingClientRect();
+      const DPR = devicePixelRatio || 1;
+      mapCanvas.width = rect.width * DPR;
+      mapCanvas.height = rect.height * DPR;
+      mapCanvas.style.width = rect.width + 'px';
+      mapCanvas.style.height = rect.height + 'px';
+      const ctx = mapCanvas.getContext('2d');
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+      // background
+      ctx.fillStyle = '#04202f';
+      ctx.fillRect(0,0,rect.width,rect.height);
+      // coast (stylized)
+      ctx.fillStyle = '#08364d';
+      ctx.beginPath();
+      ctx.moveTo(0,rect.height*0.55);
+      ctx.bezierCurveTo(rect.width*0.2,rect.height*0.35,rect.width*0.45,rect.height*0.25,rect.width*0.7,rect.height*0.2);
+      ctx.lineTo(rect.width,rect.height*0.15);
+      ctx.lineTo(rect.width,rect.height);
+      ctx.lineTo(0,rect.height);
+      ctx.closePath();
+      ctx.fill();
+      // route polyline
+      const pts = [
+        {x:rect.width*0.12,y:rect.height*0.82},
+        {x:rect.width*0.24,y:rect.height*0.68},
+        {x:rect.width*0.37,y:rect.height*0.55},
+        {x:rect.width*0.52,y:rect.height*0.42},
+        {x:rect.width*0.68,y:rect.height*0.28}
+      ];
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      // outer glow
+      ctx.strokeStyle = 'rgba(6,214,160,0.15)';
+      ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y)); ctx.stroke();
+      // main
+      ctx.strokeStyle = '#06d6a0';
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y)); ctx.stroke();
+      // pins
+      function pin(x,y){ ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(x,y,7,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill(); }
+      pin(pts[0].x,pts[0].y); pin(pts[pts.length-1].x,pts[pts.length-1].y);
+    }
+    new ResizeObserver(drawMapPreview).observe(document.getElementById('mapWrap'));
+    window.addEventListener('load', drawMapPreview);
+
+    /* -------------------------
+       Render Destinations + Trips
+       ------------------------- */
+    const demoData = {
+      destinations: [
+        {name:'Munnar', tag:'Hill Station', rating:4.8, desc:'Tea gardens & cool climate'},
+        {name:'Alappuzha', tag:'Backwaters', rating:4.7, desc:'Houseboats & canals'},
+        {name:'Kovalam', tag:'Beach', rating:4.5, desc:'Lighthouse & waves'},
+        {name:'Wayanad', tag:'Wildlife', rating:4.6, desc:'Forests & waterfalls'}
+      ]
+    };
+
+    function renderDestinations(){
+      const destGrid = $('#destGrid'); destGrid.innerHTML = '';
+      demoData.destinations.forEach(d=>{
+        const col = document.createElement('div'); col.className = 'col-12 col-md-6 col-lg-3';
+        col.innerHTML = `<div class="card h-100 app-card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h6 class="mb-1">${d.name}</h6>
+                <div class="small-muted truncate-2">${d.desc}</div>
+              </div>
+              <div><span class="badge bg-primary">⭐ ${d.rating}</span></div>
+            </div>
+            <div class="mt-3"><span class="badge-soft">${d.tag}</span></div>
+          </div>
+        </div>`;
+        destGrid.appendChild(col);
+      });
+    }
+
+    function renderHome(){
+      const list = $('#tripList');
+      const empty = $('#emptyState');
+      list.innerHTML = ''; $('#tripCount').textContent = trips.length;
+      if(!trips.length){ empty.classList.remove('d-none'); return; }
+      empty.classList.add('d-none');
+
+      trips.forEach(t=>{
+        const days = t.startDate && t.endDate ? Math.max(1, Math.round((new Date(t.endDate)-new Date(t.startDate))/(1000*60*60*24))+1) : '-';
+        const col = document.createElement('div'); col.className='col-12 col-md-6';
+        col.innerHTML = `<div class="card h-100 pointer" onclick="openTrip('${t.id}')">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div class="me-2">
+                <h6 class="mb-1 truncate-1">${t.name}</h6>
+                <div class="small-muted truncate-1"><i class="bi bi-geo-alt me-1"></i>${t.destination}</div>
+                <div class="small-muted"><i class="bi bi-calendar3 me-1"></i>${fmt(t.startDate)} - ${fmt(t.endDate)} • ${days} day(s)</div>
+              </div>
+              <div><span class="badge bg-primary">${(t.itinerary?.length||0)} plans</span></div>
+            </div>
+            <hr/>
+            <div class="d-flex justify-content-between small-muted">
+              <div><i class="bi bi-receipt me-1"></i>${(t.expenses?.length||0)} expenses</div>
+              <div><i class="bi bi-file-earmark-text me-1"></i>${(t.documents?.length||0)} docs</div>
+              <div><i class="bi bi-card-image me-1"></i>${(t.notes?.length||0)} notes</div>
+            </div>
+          </div>
+        </div>`;
+        list.appendChild(col);
+      });
+    }
+
+    /* -------------------------
+       Navigation & CRUD
+       ------------------------- */
+    function navigateHome(){ $('#tripView').classList.add('d-none'); $('#homeView').classList.remove('d-none'); renderHome(); }
+    function openTrip(id){
+      currentId = id; const t = trips.find(x=>x.id===id); if(!t) return;
+      $('#homeView').classList.add('d-none'); $('#tripView').classList.remove('d-none');
+      $('#tripTitle').textContent = t.name; $('#tripMeta').textContent = `${t.destination} • ${fmt(t.startDate)} - ${fmt(t.endDate)}`;
+      renderItinerary(); renderExpenses(); renderDocs(); renderNotes();
+    }
+
+    function createTrip(){
+      const name = $('#tripName').value.trim();
+      const destination = $('#tripDestination').value.trim();
+      const startDate = $('#tripStart').value;
+      const endDate = $('#tripEnd').value;
+      if(!name || !destination || !startDate || !endDate){ toast('Please fill all fields'); return; }
+      const t = { id: uid(), name, destination, startDate, endDate, itinerary:[], expenses:[], documents:[], notes:[] };
+      trips.push(t); write(trips);
+      bootstrap.Modal.getInstance($('#newTripModal')).hide();
+      $('#tripForm').reset();
+      toast('Trip created');
+      renderHome();
+    }
+
+    function deleteTrip(){
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      if(!confirm(`Delete trip "${t.name}"?`)) return;
+      trips = trips.filter(x=>x.id!==currentId); write(trips);
+      currentId = null; toast('Trip deleted'); navigateHome();
+    }
+
+    /* -------------------------
+       Itinerary
+       ------------------------- */
+    $('#itineraryForm').addEventListener('submit', e=>{
+      e.preventDefault();
+      const date=$('#itDate').value, time=$('#itTime').value, title=$('#itTitle').value.trim(), loc=$('#itLocation').value.trim();
+      if(!title){ toast('Add a title'); return; }
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      t.itinerary.push({ id: uid(), date, time, title, location: loc, mapUrl:'' });
+      write(trips); e.target.reset(); toast('Activity added'); renderItinerary();
+    });
+
+    function renderItinerary(){
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      const wrap = $('#itineraryList'); wrap.innerHTML='';
+      const items = [...(t.itinerary||[])].sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time));
+      if(!items.length){ wrap.innerHTML = `<div class='text-muted text-center p-4'>No items yet.</div>`; return; }
+      items.forEach(it=>{
+        const col = document.createElement('div'); col.className='col-12 col-md-6';
+        col.innerHTML = `<div class='card h-100 app-card'>
+          <div class='card-body d-flex justify-content-between'>
+            <div>
+              <div class='small-muted'>${fmt(it.date)} ${it.time||''}</div>
+              <h6 class='mb-1'>${it.title}</h6>
+              <div class='small-muted'><i class='bi bi-geo me-1'></i>${it.location||'-'}</div>
+            </div>
+            <div class="d-flex flex-column gap-2">
+              <button class='btn btn-sm btn-outline-light' onclick="removeItinerary('${it.id}')"><i class='bi bi-trash'></i></button>
+            </div>
+          </div>
+        </div>`;
+        wrap.appendChild(col);
+      });
+    }
+    function removeItinerary(id){ const t=trips.find(x=>x.id===currentId); if(!t)return; t.itinerary = t.itinerary.filter(x=>x.id!==id); write(trips); toast('Removed'); renderItinerary(); }
+
+    /* -------------------------
+       Expenses
+       ------------------------- */
+    $('#expenseForm').addEventListener('submit', e=>{
+      e.preventDefault();
+      const date=$('#exDate').value, cat=$('#exCategory').value, desc=$('#exDesc').value.trim(), amt=Number($('#exAmount').value);
+      if(!desc || !amt){ toast('Enter description and amount'); return; }
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      t.expenses.push({ id: uid(), date, category: cat, description: desc, amount: Number(amt) });
+      write(trips); e.target.reset(); toast('Expense added'); renderExpenses();
+    });
+
+    function renderExpenses(){
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      const tbody = $('#expenseTable'); tbody.innerHTML='';
+      const items = [...(t.expenses||[])].sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+      let total = 0; const byCat = {};
+      items.forEach(ex=>{
+        total += ex.amount; byCat[ex.category] = (byCat[ex.category]||0) + ex.amount;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${ex.date||'-'}</td><td>${ex.category}</td><td>${ex.description}</td><td class='text-end'>${money(ex.amount)}</td><td class='text-end'><button class='btn btn-sm btn-outline-light' onclick="removeExpense('${ex.id}')"><i class='bi bi-trash'></i></button></td>`;
+        tbody.appendChild(tr);
+      });
+      $('#expenseCount').textContent = `${items.length} item(s)`;
+      $('#expenseTotal').textContent = money(total);
+      const summary = Object.entries(byCat).map(([k,v])=>`<div class='d-flex justify-content-between'><span>${k}</span><span>${money(v)}</span></div>`).join('');
+      $('#expenseSummary').innerHTML = summary || `<span class="text-muted">No expenses yet.</span>`;
+    }
+    function removeExpense(id){ const t=trips.find(x=>x.id===currentId); if(!t)return; t.expenses = t.expenses.filter(x=>x.id!==id); write(trips); toast('Removed'); renderExpenses(); }
+
+    /* -------------------------
+       Documents
+       ------------------------- */
+    $('#docForm').addEventListener('submit', e=>{
+      e.preventDefault();
+      const name=$('#docName').value.trim(), type=$('#docType').value, url=$('#docUrl').value.trim();
+      if(!name){ toast('Add a document name'); return; }
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      t.documents.push({ id: uid(), name, type, url }); write(trips); e.target.reset(); toast('Document saved'); renderDocs();
+    });
+
+    function renderDocs(){
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      const wrap = $('#docList'); wrap.innerHTML='';
+      const items = t.documents||[];
+      if(!items.length){ wrap.innerHTML = `<div class='text-muted text-center p-4'>No documents yet.</div>`; return; }
+      items.forEach(d=>{
+        const col = document.createElement('div'); col.className='col-12 col-md-6 col-xl-4';
+        col.innerHTML = `<div class='card h-100 app-card'><div class='card-body d-flex justify-content-between align-items-start'>
+          <div>
+            <div class='small-muted'>${d.type}</div>
+            <h6 class='mb-1 truncate-2'>${d.name}</h6>
+            ${d.url ? `<a href='${d.url}' target='_blank' class='small'>Open Link <i class='bi bi-box-arrow-up-right'></i></a>` : `<div class='small-muted'>No link</div>`}
+          </div>
+          <button class='btn btn-sm btn-outline-light' onclick="removeDoc('${d.id}')"><i class='bi bi-trash'></i></button>
+        </div></div>`;
+        wrap.appendChild(col);
+      });
+    }
+    function removeDoc(id){ const t=trips.find(x=>x.id===currentId); if(!t)return; t.documents = t.documents.filter(x=>x.id!==id); write(trips); toast('Removed'); renderDocs(); }
+
+    /* -------------------------
+       Notes
+       ------------------------- */
+    $('#noteForm').addEventListener('submit', e=>{
+      e.preventDefault();
+      const text=$('#noteText').value.trim(), img=$('#noteImg').value.trim();
+      if(!text){ toast('Write a note'); return; }
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      t.notes.push({ id: uid(), date: new Date().toISOString(), text, imageUrl: img }); write(trips); e.target.reset(); toast('Note added'); renderNotes();
+    });
+
+    function renderNotes(){
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      const wrap = $('#noteList'); wrap.innerHTML='';
+      const items = [...(t.notes||[])].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+      if(!items.length){ wrap.innerHTML = `<div class='text-muted text-center p-4'>No notes yet.</div>`; return; }
+      items.forEach(n=>{
+        const col = document.createElement('div'); col.className='col-12 col-md-6 col-xl-4';
+        col.innerHTML = `<div class='card h-100 app-card'>
+          ${n.imageUrl ? `<img src='${n.imageUrl}' class='card-img-top' alt='note image' onerror="this.style.display='none'">`: ''}
+          <div class='card-body d-flex justify-content-between align-items-start'>
+            <div>
+              <div class='small-muted mb-1'>${new Date(n.date).toLocaleString()}</div>
+              <div>${n.text}</div>
+            </div>
+            <button class='btn btn-sm btn-outline-light' onclick="removeNote('${n.id}')"><i class='bi bi-trash'></i></button>
+          </div>
+        </div>`;
+        wrap.appendChild(col);
+      });
+    }
+    function removeNote(id){ const t=trips.find(x=>x.id===currentId); if(!t)return; t.notes = t.notes.filter(x=>x.id!==id); write(trips); toast('Removed'); renderNotes(); }
+
+    /* -------------------------
+       Share / Export / Print
+       ------------------------- */
+    function shareTrip(){
+      const t = trips.find(x=>x.id===currentId); if(!t) return;
+      const total = (t.expenses||[]).reduce((a,b)=>a+(b.amount||0),0);
+      const summary = `Trip: ${t.name}\nDestination: ${t.destination}\nDates: ${fmt(t.startDate)} - ${fmt(t.endDate)}\nItinerary: ${(t.itinerary||[]).length}\nExpenses total: ${money(total)}`;
+      navigator.clipboard?.writeText(summary);
+      toast('Summary copied to clipboard');
+    }
+
+    function exportJSON(){
+      const blob = new Blob([JSON.stringify(trips, null, 2)], {type: 'application/json'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tripmate-data.json'; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    function printSummary(){ window.print(); }
+
+    /* -------------------------
+       Demo seed
+       ------------------------- */
+    function seedDemoData(){
+      if(trips.length && !confirm('Replace current data with demo content?')) return;
+      trips = [{
+        id: uid(),
+        name: 'Kerala Explorer',
+        destination: 'Munnar, Kerala',
+        startDate: new Date().toISOString().slice(0,10),
+        endDate: new Date(Date.now()+3*86400000).toISOString().slice(0,10),
+        itinerary: [
+          { id: uid(), date: new Date().toISOString().slice(0,10), time: '09:00', title:'Tea Garden Walk', location:'Munnar' },
+          { id: uid(), date: new Date(Date.now()+86400000).toISOString().slice(0,10), time: '15:00', title:'Echo Point', location:'Munnar' }
+        ],
+        expenses: [
+          { id: uid(), date: new Date().toISOString().slice(0,10), category:'Transport', description:'Cab rental', amount: 1800 },
+          { id: uid(), date: new Date().toISOString().slice(0,10), category:'Food', description:'Lunch', amount: 450 }
+        ],
+        documents: [{ id: uid(), name:'Hotel Booking', type:'Hotel', url:'' }],
+        notes: [{ id: uid(), date:new Date().toISOString(), text:'Carry warm clothes' }]
+      }];
+      write(trips); toast('Demo data added'); renderHome();
+    }
+
+    /* -------------------------
+       Init
+       ------------------------- */
+    function init(){
+      renderDestinations();
+      renderHome();
+    }
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
